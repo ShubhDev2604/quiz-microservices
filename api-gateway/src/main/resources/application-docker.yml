@@ -1,0 +1,11 @@
+spring:
+  zipkin:
+    base-url: ${SPRING_ZIPKIN_BASE_URL:http://zipkin:9411}
+  sleuth:
+    zipkin:
+      base-url: ${SPRING_ZIPKIN_BASE_URL:http://zipkin:9411}
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE:http://service-registry:8761/eureka}

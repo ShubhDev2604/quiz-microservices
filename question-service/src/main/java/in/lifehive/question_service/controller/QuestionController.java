@@ -63,4 +63,9 @@ public class QuestionController {
     public ResponseEntity<Integer> getScore(@RequestBody List<QuizResponse> responseList) {
         return service.getScore(responseList);
     }
+
+    @GetMapping("/")
+    public ResponseEntity<String> checkingRunningStatus() {
+        return ResponseEntity.ok().body("Hello Question service is running");
+    }
 }

@@ -34,4 +34,9 @@ public class QuizController {
     public ResponseEntity<Integer> submitQuiz(@PathVariable Long id, @RequestBody List<QuizResponse> quizResponse) {
         return service.calculateResult(id, quizResponse);
     }
+
+    @GetMapping("/")
+    public ResponseEntity<String> checkingRunningStatus() {
+        return ResponseEntity.ok().body("Hello Quiz service is running");
+    }
 }

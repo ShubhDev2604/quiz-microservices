@@ -1,0 +1,166 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: quiz-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Admin@1234
+      POSTGRES_DB: quizDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quiz-network
+
+  # PostgreSQL Database for Question Service
+  postgres-question:
+    image: postgres:16-alpine
+    container_name: question-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Admin@1234
+      POSTGRES_DB: questionDb
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-question-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quiz-network
+
+  # Zipkin for Distributed Tracing
+  zipkin:
+    image: openzipkin/zipkin:latest
+    container_name: zipkin
+    ports:
+      - "9411:9411"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9411/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - quiz-network
+
+  # Eureka Service Registry
+  service-registry:
+    build:
+      context: ./service-registry
+      dockerfile: Dockerfile
+    container_name: service-registry
+    ports:
+      - "8761:8761"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    depends_on:
+      zipkin:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8761/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - quiz-network
+
+  # Question Service
+  question-service:
+    build:
+      context: ./question-service
+      dockerfile: Dockerfile
+    container_name: question-service
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-question:5432/questionDb
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka
+      SPRING_ZIPKIN_BASE_URL: http://zipkin:9411
+    depends_on:
+      postgres-question:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - quiz-network
+
+  # Quiz Service
+  quiz-service:
+    build:
+      context: ./quiz-service
+      dockerfile: Dockerfile
+    container_name: quiz-service
+    ports:
+      - "8090:8090"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/quizDb
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka
+      SPRING_ZIPKIN_BASE_URL: http://zipkin:9411
+    depends_on:
+      postgres:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8090/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - quiz-network
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: api-gateway
+    ports:
+      - "8765:8765"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE: http://service-registry:8761/eureka
+      SPRING_ZIPKIN_BASE_URL: http://zipkin:9411
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      quiz-service:
+        condition: service_healthy
+      question-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8765/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    networks:
+      - quiz-network
+
+volumes:
+  postgres-data:
+  postgres-question-data:
+
+networks:
+  quiz-network:
+    driver: bridge
